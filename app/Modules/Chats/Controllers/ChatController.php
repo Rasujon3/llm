@@ -70,17 +70,20 @@ class ChatController extends AppBaseController
 
         // 🧩 2️⃣ If similarity ≥ 70%, run saved SQL query
         if ($bestMatch && $bestScore >= 70) {
-            $result = collect(DB::select($bestMatch->action_query));
+            $result = collect(DB::select($bestMatch->action_query))->map(fn($r) => (array) $r);
+//            return $result;
 
             $responseText = $result->isEmpty()
                 ? "No data found for your request."
                 : $result;
 
+            $html = view('components.data-table', ['data' => $result])->render();
+
             // save history
             ChatHistory::create([
                 'user_id' => $userId,
                 'prompt' => $prompt,
-                'response' => json_encode($responseText),
+                'response' => $result->isEmpty() ? $responseText : $html,
                 'source' => 'database',
             ]);
 
@@ -88,7 +91,7 @@ class ChatController extends AppBaseController
                 'status' => true,
                 'source' => 'database',
                 'match_score' => round($bestScore, 2),
-                'data' => $responseText
+                'data' => $html
             ]);
         }
 
