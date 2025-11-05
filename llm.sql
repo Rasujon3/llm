@@ -2,10 +2,10 @@
 -- version 5.2.1
 -- https://www.phpmyadmin.net/
 --
--- Host: localhost:3306
--- Generation Time: Nov 05, 2025 at 11:54 AM
--- Server version: 10.6.19-MariaDB
--- PHP Version: 8.1.31
+-- Host: 127.0.0.1
+-- Generation Time: Nov 05, 2025 at 08:28 AM
+-- Server version: 10.4.28-MariaDB
+-- PHP Version: 8.2.4
 
 SET SQL_MODE = "NO_AUTO_VALUE_ON_ZERO";
 START TRANSACTION;
@@ -18,7 +18,7 @@ SET time_zone = "+00:00";
 /*!40101 SET NAMES utf8mb4 */;
 
 --
--- Database: `lottaxcoin_go_hotel`
+-- Database: `llm`
 --
 
 -- --------------------------------------------------------
@@ -165,6 +165,32 @@ CREATE TABLE `cache_locks` (
   `owner` varchar(255) NOT NULL,
   `expiration` int(11) NOT NULL
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- --------------------------------------------------------
+
+--
+-- Table structure for table `chat_histories`
+--
+
+CREATE TABLE `chat_histories` (
+  `id` bigint(20) UNSIGNED NOT NULL,
+  `user_id` bigint(20) UNSIGNED DEFAULT NULL,
+  `prompt` text DEFAULT NULL COMMENT 'User’s message or voice-converted text',
+  `response` longtext DEFAULT NULL COMMENT 'ChatGPT or database response',
+  `source` varchar(255) NOT NULL DEFAULT 'chatgpt' COMMENT 'Response source type',
+  `meta` longtext CHARACTER SET utf8mb4 COLLATE utf8mb4_bin DEFAULT NULL COMMENT 'Extra info: temperature, tokens, etc.' CHECK (json_valid(`meta`)),
+  `created_at` timestamp NULL DEFAULT NULL,
+  `updated_at` timestamp NULL DEFAULT NULL
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+--
+-- Dumping data for table `chat_histories`
+--
+
+INSERT INTO `chat_histories` (`id`, `user_id`, `prompt`, `response`, `source`, `meta`, `created_at`, `updated_at`) VALUES
+(1, 5, 'give me popular hotel list', '[{\"id\":1,\"name\":\"Hotel update\",\"address\":\"hotel_address update\",\"avg_rating\":\"4.5\",\"rating_count\":1},{\"id\":2,\"name\":\"Hotel update\",\"address\":\"hotel_address update\",\"avg_rating\":\"3.5\",\"rating_count\":1},{\"id\":3,\"name\":\"Hotel 2\",\"address\":\"hotel_address\",\"avg_rating\":null,\"rating_count\":0},{\"id\":5,\"name\":\"Hotel 6\",\"address\":\"hotel_address\",\"avg_rating\":null,\"rating_count\":0},{\"id\":6,\"name\":\"Hotel 6\",\"address\":\"hotel_address\",\"avg_rating\":null,\"rating_count\":0}]', 'database', NULL, '2025-11-05 07:24:09', '2025-11-05 07:24:09'),
+(2, 5, 'popular hotel list', '[{\"id\":1,\"name\":\"Hotel update\",\"address\":\"hotel_address update\",\"avg_rating\":\"4.5\",\"rating_count\":1},{\"id\":2,\"name\":\"Hotel update\",\"address\":\"hotel_address update\",\"avg_rating\":\"3.5\",\"rating_count\":1},{\"id\":3,\"name\":\"Hotel 2\",\"address\":\"hotel_address\",\"avg_rating\":null,\"rating_count\":0},{\"id\":5,\"name\":\"Hotel 6\",\"address\":\"hotel_address\",\"avg_rating\":null,\"rating_count\":0},{\"id\":6,\"name\":\"Hotel 6\",\"address\":\"hotel_address\",\"avg_rating\":null,\"rating_count\":0}]', 'database', NULL, '2025-11-05 07:24:27', '2025-11-05 07:24:27'),
+(3, 5, 'popular hotel', 'No response.', 'chatgpt', NULL, '2025-11-05 07:24:39', '2025-11-05 07:24:39');
 
 -- --------------------------------------------------------
 
@@ -503,7 +529,9 @@ INSERT INTO `migrations` (`id`, `migration`, `batch`) VALUES
 (64, '2025_10_11_154441_create_settings_table', 55),
 (65, '2025_10_14_112825_add_columns_to_ratings_table', 56),
 (66, '2025_10_14_162121_add_columns_to_booking_details_table', 57),
-(67, '2025_10_15_140620_add_columns_to_offers_table', 57);
+(67, '2025_10_15_140620_add_columns_to_offers_table', 57),
+(68, '2025_11_05_120918_create_chat_histories_table', 58),
+(69, '2025_11_05_124351_create_predefined_commands_table', 59);
 
 -- --------------------------------------------------------
 
@@ -745,6 +773,35 @@ INSERT INTO `popular_places` (`id`, `name`, `image_url`, `image_path`, `status`,
 (3, 'Cox’s Bazar', 'https://aisoft-hotel-project.s3.ap-south-1.amazonaws.com/popular_place/c2364e46-c80d-456a-b293-9142908fc161.png', 'popular_place/c2364e46-c80d-456a-b293-9142908fc161.png', 'Active', '2025-09-18 05:55:15', '2025-09-18 05:55:15'),
 (4, 'Sreemangal', 'https://aisoft-hotel-project.s3.ap-south-1.amazonaws.com/popular_place/ec840812-1b80-4fad-af39-5fbe0733ce61.png', 'popular_place/ec840812-1b80-4fad-af39-5fbe0733ce61.png', 'Active', '2025-09-18 05:55:22', '2025-09-18 05:55:22'),
 (7, 'Sajek Valley', 'https://aisoft-hotel-project.s3.ap-south-1.amazonaws.com/popular_place/c16f4705-db9c-45f6-8b2e-48bc6c3466d5.png', 'popular_place/c16f4705-db9c-45f6-8b2e-48bc6c3466d5.png', 'Active', '2025-10-11 06:01:10', '2025-10-11 06:01:10');
+
+-- --------------------------------------------------------
+
+--
+-- Table structure for table `predefined_commands`
+--
+
+CREATE TABLE `predefined_commands` (
+  `id` bigint(20) UNSIGNED NOT NULL,
+  `command` varchar(255) DEFAULT NULL COMMENT 'Exact or pattern of voice/text command',
+  `command_bn` varchar(255) DEFAULT NULL COMMENT 'Bangla or alternate language command',
+  `description` varchar(255) DEFAULT NULL,
+  `action_query` text DEFAULT NULL COMMENT 'SQL or API endpoint or internal function name',
+  `action_type` enum('query','api','custom') NOT NULL DEFAULT 'query',
+  `is_active` tinyint(1) NOT NULL DEFAULT 1,
+  `created_at` timestamp NULL DEFAULT NULL,
+  `updated_at` timestamp NULL DEFAULT NULL
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+--
+-- Dumping data for table `predefined_commands`
+--
+
+INSERT INTO `predefined_commands` (`id`, `command`, `command_bn`, `description`, `action_query`, `action_type`, `is_active`, `created_at`, `updated_at`) VALUES
+(1, 'give me popular hotel list', 'জনপ্রিয় হোটেল লিস্ট দেখাও', 'Show list of hotels marked as popular', 'SELECT \r\n    hotels.id,\r\n    hotels.hotel_name AS name,\r\n    hotels.hotel_address AS address,\r\n    ROUND(AVG(ratings.rating), 1) AS avg_rating,\r\n    COUNT(ratings.id) AS rating_count\r\nFROM hotels\r\nLEFT JOIN ratings ON ratings.hotel_id = hotels.id\r\nWHERE hotels.status = \'Active\'\r\nGROUP BY hotels.id, hotels.hotel_name, hotels.hotel_address\r\nORDER BY avg_rating DESC\r\nLIMIT 10;\r\n', 'query', 1, '2025-11-05 06:55:44', '2025-11-05 06:55:44'),
+(2, 'find 001 referred users', '০০১ রেফার্ড ইউজার দেখাও', 'Show all users who used referral code 001', 'SELECT id, name, email, refer_code FROM users WHERE refer_code = \'001\'', 'query', 1, '2025-11-05 06:55:44', '2025-11-05 06:55:44'),
+(3, 'show today bookings', 'আজকের বুকিং দেখাও', 'Show all hotel bookings made today', 'SELECT * FROM bookings WHERE DATE(created_at) = CURDATE()', 'query', 1, '2025-11-05 06:55:44', '2025-11-05 06:55:44'),
+(4, 'show top customers', 'সেরা কাস্টমার দেখাও', 'Show top customers by number of bookings', 'SELECT users.id, users.name, COUNT(bookings.id) AS total_bookings FROM users JOIN bookings ON users.id = bookings.user_id GROUP BY users.id ORDER BY total_bookings DESC LIMIT 10', 'query', 1, '2025-11-05 06:55:44', '2025-11-05 06:55:44'),
+(5, 'total earnings this month', 'এই মাসের মোট আয় দেখাও', 'Show total revenue generated this month', 'SELECT SUM(amount) AS total_earnings FROM payments WHERE MONTH(created_at) = MONTH(CURDATE()) AND YEAR(created_at) = YEAR(CURDATE())', 'query', 1, '2025-11-05 06:55:44', '2025-11-05 06:55:44');
 
 -- --------------------------------------------------------
 
@@ -1139,6 +1196,13 @@ ALTER TABLE `cache_locks`
   ADD PRIMARY KEY (`key`);
 
 --
+-- Indexes for table `chat_histories`
+--
+ALTER TABLE `chat_histories`
+  ADD PRIMARY KEY (`id`),
+  ADD KEY `chat_histories_user_id_foreign` (`user_id`);
+
+--
 -- Indexes for table `expenses`
 --
 ALTER TABLE `expenses`
@@ -1270,6 +1334,12 @@ ALTER TABLE `popular_places`
   ADD PRIMARY KEY (`id`);
 
 --
+-- Indexes for table `predefined_commands`
+--
+ALTER TABLE `predefined_commands`
+  ADD PRIMARY KEY (`id`);
+
+--
 -- Indexes for table `projects`
 --
 ALTER TABLE `projects`
@@ -1388,6 +1458,12 @@ ALTER TABLE `building_imgs`
   MODIFY `id` bigint(20) UNSIGNED NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=12;
 
 --
+-- AUTO_INCREMENT for table `chat_histories`
+--
+ALTER TABLE `chat_histories`
+  MODIFY `id` bigint(20) UNSIGNED NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=4;
+
+--
 -- AUTO_INCREMENT for table `expenses`
 --
 ALTER TABLE `expenses`
@@ -1445,7 +1521,7 @@ ALTER TABLE `jobs`
 -- AUTO_INCREMENT for table `migrations`
 --
 ALTER TABLE `migrations`
-  MODIFY `id` int(10) UNSIGNED NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=68;
+  MODIFY `id` int(10) UNSIGNED NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=70;
 
 --
 -- AUTO_INCREMENT for table `offers`
@@ -1482,6 +1558,12 @@ ALTER TABLE `personal_access_tokens`
 --
 ALTER TABLE `popular_places`
   MODIFY `id` bigint(20) UNSIGNED NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=8;
+
+--
+-- AUTO_INCREMENT for table `predefined_commands`
+--
+ALTER TABLE `predefined_commands`
+  MODIFY `id` bigint(20) UNSIGNED NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=6;
 
 --
 -- AUTO_INCREMENT for table `projects`
@@ -1587,6 +1669,12 @@ ALTER TABLE `building_imgs`
   ADD CONSTRAINT `building_imgs_building_id_foreign` FOREIGN KEY (`building_id`) REFERENCES `buildings` (`id`) ON DELETE CASCADE,
   ADD CONSTRAINT `building_imgs_hotel_id_foreign` FOREIGN KEY (`hotel_id`) REFERENCES `hotels` (`id`) ON DELETE CASCADE,
   ADD CONSTRAINT `building_imgs_user_id_foreign` FOREIGN KEY (`user_id`) REFERENCES `users` (`id`) ON DELETE CASCADE;
+
+--
+-- Constraints for table `chat_histories`
+--
+ALTER TABLE `chat_histories`
+  ADD CONSTRAINT `chat_histories_user_id_foreign` FOREIGN KEY (`user_id`) REFERENCES `users` (`id`) ON DELETE CASCADE;
 
 --
 -- Constraints for table `facilities`
