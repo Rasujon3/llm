@@ -28,7 +28,7 @@ class ChatController extends AppBaseController
     public function index($user_id)
     {
         $histories = ChatHistory::where('user_id', $user_id)
-            ->orderBy('created_at', 'desc')
+            ->orderBy('created_at', 'asc')
             ->get(['id', 'prompt', 'response', 'source', 'created_at']);
 
         if ($histories->isEmpty()) {
