@@ -97,24 +97,50 @@ class ChatController extends AppBaseController
 
         // 🤖 3️⃣ Otherwise, call ChatGPT API
         $apiKey = env('OPENAI_API_KEY');
+        $promptForHtml = $prompt . "\n\nPlease provide the response in **HTML format**. " .
+            "Use proper HTML tags like <p>, <ul>, <li>, <table>, <tr>, <td> if needed. " .
+            "Do not include plain text outside HTML.";
+
         $chatResponse = Http::withHeaders([
             'Authorization' => "Bearer {$apiKey}",
             'Content-Type' => 'application/json',
         ])->post('https://api.openai.com/v1/chat/completions', [
             'model' => 'gpt-4o-mini',
             'messages' => [
-                ['role' => 'user', 'content' => $prompt],
+//                ['role' => 'user', 'content' => $prompt],
+                ['role' => 'user', 'content' => $promptForHtml],
             ],
-            'max_tokens' => 300,
+            'max_tokens' => 3000,
         ]);
 
-        $content = $chatResponse->json()['choices'][0]['message']['content'] ?? 'No response.';
+        $content = (bool)$chatResponse->json()['choices'][0]['message']['content'];
+        $bodyHtml = $content ? '' : 'No response.';
+        if ($content) {
+            $responseHtml = $chatResponse->json()['choices'][0]['message']['content'] ?? '';
+
+            // DOMDocument ইনিশিয়ালাইজ
+            $doc = new \DOMDocument();
+
+            // Suppress warnings (যেহেতু ChatGPT HTML প্রপারলি formatted নাও হতে পারে)
+            libxml_use_internal_errors(true);
+            $doc->loadHTML($responseHtml, LIBXML_HTML_NOIMPLIED | LIBXML_HTML_NODEFDTD);
+            libxml_clear_errors();
+
+            // <body> ট্যাগ বের করা
+            $body = $doc->getElementsByTagName('body')->item(0);
+
+            $bodyHtml = $body ? $doc->saveHTML($body) : $responseHtml;
+
+            // ✅ এখন $bodyHtml শুধুই <body> content
+        }
+
 
         // 💾 Save response
         ChatHistory::create([
             'user_id' => $userId,
             'prompt' => $prompt,
-            'response' => $content,
+//            'response' => $content,
+            'response' => $content ? $bodyHtml : 'No response.',
             'source' => 'chatgpt',
         ]);
 
@@ -123,7 +149,8 @@ class ChatController extends AppBaseController
             'status' => true,
             'source' => 'chatgpt',
             'match_score' => round($bestScore, 2),
-            'data' => $content,
+//            'data' => $content,
+            'data' => $bodyHtml,
         ]);
     }
 
