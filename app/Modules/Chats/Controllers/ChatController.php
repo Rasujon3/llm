@@ -70,46 +70,71 @@ class ChatController extends AppBaseController
 
         // 🧩 2️⃣ If similarity ≥ 70%, run saved SQL query
         if ($bestMatch && $bestScore >= 70) {
-            $result = collect(DB::select($bestMatch->action_query))->map(fn($r) => (array) $r);
-//            return $result;
-
-            $responseText = $result->isEmpty()
-                ? "No data found for your request."
-                : $result;
-
-            $html = view('components.data-table', ['data' => $result])->render();
-
-            // save history
-            ChatHistory::create([
-                'user_id' => $userId,
-                'prompt' => $prompt,
-                'response' => $result->isEmpty() ? $responseText : $html,
-                'source' => 'database',
-            ]);
-
-            return response()->json([
-                'status' => true,
-                'source' => 'database',
-                'match_score' => round($bestScore, 2),
-                'data' => $html
-            ]);
+            return $this->myDbResponse($bestMatch, $bestScore, $userId, $prompt);
         }
 
         // 🤖 3️⃣ Otherwise, call ChatGPT API
+        return $this->chatGPTResponse($bestScore, $userId, $prompt);
+
+    }
+
+    protected function myDbResponse($bestMatch, $bestScore, $userId, $prompt)
+    {
+        $result = collect(DB::select($bestMatch->action_query))->map(fn($r) => (array) $r);
+
+        $responseText = $result->isEmpty()
+            ? "No data found for your request."
+            : $result;
+
+        $html = view('components.data-table', ['data' => $result])->render();
+
+        // save history
+        ChatHistory::create([
+            'user_id' => $userId,
+            'prompt' => $prompt,
+            'response' => $result->isEmpty() ? $responseText : $html,
+            'source' => 'database',
+        ]);
+
+        return response()->json([
+            'status' => true,
+            'source' => 'database',
+            'match_score' => round($bestScore, 2),
+            'data' => $html
+        ]);
+    }
+
+    protected function chatGPTResponse($bestScore, $userId, $prompt)
+    {
+        $history = ChatHistory::where('user_id', $userId)
+            ->latest()
+            ->take(5)
+            ->get(['prompt', 'response']);
+
+        $messages = [];
+
+// আগের কথোপকথন যুক্ত করা
+        foreach ($history->reverse() as $item) {
+            $messages[] = ['role' => 'user', 'content' => $item->prompt];
+            $messages[] = ['role' => 'assistant', 'content' => $item->response];
+        }
+
+// এখন নতুন মেসেজ অ্যাড করা
+        $messages[] = ['role' => 'user', 'content' => $prompt];
+        // 🤖 3️⃣ Otherwise, call ChatGPT API
         $apiKey = env('OPENAI_API_KEY');
-        $promptForHtml = $prompt . "\n\nPlease provide the response in **HTML format**. " .
+        $promptForHtml = "\n\nPlease provide the response in **HTML format**. " .
             "Use proper HTML tags like <p>, <ul>, <li>, <table>, <tr>, <td> if needed. " .
             "Do not include plain text outside HTML.";
+
+        $messages[] = ['role' => 'user', 'content' => $promptForHtml];
 
         $chatResponse = Http::withHeaders([
             'Authorization' => "Bearer {$apiKey}",
             'Content-Type' => 'application/json',
         ])->post('https://api.openai.com/v1/chat/completions', [
             'model' => 'gpt-4o-mini',
-            'messages' => [
-//                ['role' => 'user', 'content' => $prompt],
-                ['role' => 'user', 'content' => $promptForHtml],
-            ],
+            'messages' => $messages,
             'max_tokens' => 3000,
         ]);
 
@@ -152,81 +177,5 @@ class ChatController extends AppBaseController
 //            'data' => $content,
             'data' => $bodyHtml,
         ]);
-    }
-
-    // Store data
-    public function store(RatingRequest $request)
-    {
-        $userId = getUser()?->id;
-        $hotelId = $request->hotel_id;
-        $userTypeId = getUser()?->user_type_id;
-
-        $checkValid = $this->ratingRepository->checkValid($userId, $hotelId, $userTypeId);
-        if ($checkValid) {
-            return $this->sendError('Already added rating for this hotel.', 409);
-        }
-
-        $checkBookingStatus = $this->ratingRepository->checkBookingStatus($userId, $hotelId);
-        if (!$checkBookingStatus) {
-            return $this->sendError('You are not eligible for review this hotel.', 409);
-        }
-
-        $store = $this->ratingRepository->store($request->all(),$userId);
-        if (!$store) {
-            return $this->sendError('Something went wrong!!! [RC-01]', 500);
-        }
-
-        return $this->sendResponse($store, 'Data created successfully!');
-    }
-
-    // Get single details data
-    public function show($floor)
-    {
-        $userId = getUser()?->id;
-
-        $data = $this->ratingRepository->find($floor, $userId);
-        if (!$data) {
-            return $this->sendError('Data not found');
-        }
-
-        return $this->sendResponse($data, 'Data retrieved successfully.');
-    }
-
-    // Update data
-    public function update(RatingRequest $request, $id)
-    {
-        $userId = getUser()?->id;
-        $hotelId = $request->hotel_id;
-        $name = $request->name;
-
-        $data = $this->ratingRepository->find($id);
-        if (!$data) {
-            return $this->sendError('Data not found');
-        }
-
-//        $checkValid = $this->ratingRepository->checkValid($userId, $hotelId);
-//        if ($checkValid) {
-//            return $this->sendError('Already added rating for this hotel.', 409);
-//        }
-
-        $updated = $this->ratingRepository->update($data, $request->all(), $userId);
-        if (!$updated) {
-            return $this->sendError('Something went wrong!!! [FC-02]', 500);
-        }
-
-        return $this->sendResponse($updated, 'Data updated successfully!');
-    }
-
-    // Delete data
-    public function destroy($id)
-    {
-        $userId = getUser()?->id;
-
-        $data = $this->ratingRepository->find($id);
-        if (!$data) {
-            return $this->sendError('Data not found');
-        }
-        $this->ratingRepository->delete($data);
-        return $this->sendSuccess('Data deleted successfully!');
     }
 }
