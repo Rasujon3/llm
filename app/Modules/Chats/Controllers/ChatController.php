@@ -3,6 +3,7 @@
 namespace App\Modules\Chats\Controllers;
 
 use App\Http\Controllers\AppBaseController;
+use App\Modules\Chats\Models\ChatConversation;
 use App\Modules\Chats\Models\ChatHistory;
 use App\Modules\Chats\Models\PredefinedCommand;
 use App\Modules\Facilities\Repositories\FacilityRepository;
@@ -11,9 +12,12 @@ use App\Modules\Floors\Repositories\FloorRepository;
 use App\Modules\Floors\Requests\FloorRequest;
 use App\Modules\Ratings\Repositories\RatingRepository;
 use App\Modules\Ratings\Requests\RatingRequest;
+use Exception;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Http;
+use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Str;
 
 class ChatController extends AppBaseController
 {
@@ -25,57 +29,126 @@ class ChatController extends AppBaseController
     }
 
     // Fetch all data
-    public function index($user_id)
+    public function conversations(Request $request)
     {
-        $histories = ChatHistory::where('user_id', $user_id)
-            ->orderBy('created_at', 'asc')
-            ->get(['id', 'prompt', 'response', 'source', 'created_at']);
-
-        if ($histories->isEmpty()) {
-            return response()->json([
-                'status' => false,
-                'message' => 'No chat history found for this user.'
-            ], 404);
-        }
-
-        return response()->json([
-            'status' => true,
-            'data' => $histories
+        $request->validate([
+            'user_id' => 'required|integer|exists:users,id',
         ]);
+
+        try {
+            $data = ChatConversation::where('user_id', $request->user_id)
+                ->orderBy('created_at', 'desc')
+                ->get();
+
+            if ($data->isEmpty()) {
+                return response()->json([
+                    'status' => false,
+                    'message' => 'No conversations found for this user.'
+                ], 404);
+            }
+
+            return response()->json([
+                'status' => true,
+                'data' => $data
+            ]);
+        } catch (Exception $e) {
+            // Log the error
+            Log::error('Error in conversations data: ' , [
+                'message' => $e->getMessage(),
+                'code' => $e->getCode(),
+                'line' => $e->getLine()
+            ]);
+
+            return null;
+        }
+    }
+    public function index(Request $request)
+    {
+        $request->validate([
+            'user_id' => 'required|integer|exists:users,id',
+            'conversation_id' => 'required|integer|exists:chat_conversations,id',
+        ]);
+
+        try {
+            $histories = ChatHistory::where('user_id', $request->user_id)
+                ->where('conversation_id', $request->conversation_id)
+                ->orderBy('created_at', 'asc')
+                ->get(['id', 'prompt', 'response', 'source', 'created_at']);
+
+            if ($histories->isEmpty()) {
+                return response()->json([
+                    'status' => false,
+                    'message' => 'No chat history found for this user.'
+                ], 404);
+            }
+
+            return response()->json([
+                'status' => true,
+                'data' => $histories
+            ]);
+        } catch (Exception $e) {
+            // Log the error
+            Log::error('Error in storing data: ' , [
+                'message' => $e->getMessage(),
+                'code' => $e->getCode(),
+                'line' => $e->getLine()
+            ]);
+
+            return null;
+        }
     }
 
     public function handleChat(Request $request)
     {
-        $request->validate([
-            'user_id' => 'required|integer',
-            'prompt' => 'required|string',
-        ]);
+        try {
+            $request->validate([
+                'user_id' => 'required|integer|exists:users,id',
+                'conversation_id' => 'nullable|integer|exists:chat_conversations,id',
+                'prompt' => 'required|string',
+                'file' => 'nullable|image|mimes:jpg,jpeg,png,webp|max:5120',
+            ]);
 
-        $userId = $request->user_id;
-        $prompt = strtolower(trim($request->prompt));
+            $userId = $request->user_id;
+            $prompt = trim($request->prompt);
+            $file   = $request->file('file');
 
-        // 🧠 1️⃣ Find best-matching predefined command
-        $bestMatch = null;
-        $bestScore = 0;
-
-        $commands = PredefinedCommand::where('is_active', true)->get();
-
-        foreach ($commands as $cmd) {
-            $score = similar_text($prompt, strtolower($cmd->command), $percent);
-            if ($percent > $bestScore) {
-                $bestScore = $percent;
-                $bestMatch = $cmd;
+            // 🟢 Conversation
+            $conversation = null;
+            if ($request->conversation_id) {
+                $conversation = ChatConversation::where('id', $request->conversation_id)
+                    ->where('user_id', $userId)
+                    ->firstOrFail();
+            } else {
+                $conversation = ChatConversation::create([
+                    'user_id' => $userId,
+                    'title'   => Str::limit($prompt, 40),
+                ]);
             }
+
+            // 🔐 Safety check
+            if (!$conversation) {
+                return response()->json([
+                    'status' => false,
+                    'message' => 'Conversation not found',
+                ], 404);
+            }
+
+            // 🤖 3️⃣ Otherwise, call ChatGPT API
+            return $this->chatGPTResponse($userId, $conversation, $prompt, $file);
+        } catch (Exception $e) {
+            // Log the error
+            Log::error('Error in storing data: ' , [
+                'message' => $e->getMessage(),
+                'code' => $e->getCode(),
+                'line' => $e->getLine()
+            ]);
+
+            return response()->json([
+                'status' => false,
+                'message' => 'Something went wrong!!!',
+                'data' => [],
+            ]);
         }
-
-        // 🧩 2️⃣ If similarity ≥ 70%, run saved SQL query
-        if ($bestMatch && $bestScore >= 70) {
-            return $this->myDbResponse($bestMatch, $bestScore, $userId, $prompt);
-        }
-
-        // 🤖 3️⃣ Otherwise, call ChatGPT API
-        return $this->chatGPTResponse($bestScore, $userId, $prompt);
-
     }
 
     protected function myDbResponse($bestMatch, $bestScore, $userId, $prompt)
@@ -104,78 +177,161 @@ class ChatController extends AppBaseController
         ]);
     }
 
-    protected function chatGPTResponse($bestScore, $userId, $prompt)
+    protected function chatGPTResponse($userId, $conversation, $prompt, $file = null)
     {
-        $history = ChatHistory::where('user_id', $userId)
-            ->latest()
-            ->take(5)
-            ->get(['prompt', 'response']);
-
-        $messages = [];
-
-// আগের কথোপকথন যুক্ত করা
-        foreach ($history->reverse() as $item) {
-            $messages[] = ['role' => 'user', 'content' => $item->prompt];
-            $messages[] = ['role' => 'assistant', 'content' => $item->response];
+        // 🔒 Safety check
+        if (!is_object($conversation)) {
+            throw new \Exception('Conversation must be an object');
         }
 
-// এখন নতুন মেসেজ অ্যাড করা
-        $messages[] = ['role' => 'user', 'content' => $prompt];
-        // 🤖 3️⃣ Otherwise, call ChatGPT API
-        $apiKey = env('OPENAI_API_KEY');
-        $promptForHtml = "\n\nPlease provide the response in **HTML format**. " .
-            "Use proper HTML tags like <p>, <ul>, <li>, <table>, <tr>, <td> if needed. " .
-            "Do not include plain text outside HTML.";
+        // ===============================
+        // 1️⃣ Prepare meta (for DB save)
+        // ===============================
+        $meta = [
+            'has_image' => false,
+        ];
 
-        $messages[] = ['role' => 'user', 'content' => $promptForHtml];
+        $imageBase64 = null;
 
-        $chatResponse = Http::withHeaders([
-            'Authorization' => "Bearer {$apiKey}",
-            'Content-Type' => 'application/json',
+        if ($file) {
+            $mime = $file->getMimeType();
+            $base64 = base64_encode(file_get_contents($file->getRealPath()));
+            $imageBase64 = "data:$mime;base64,$base64";
+
+            $meta = [
+                'has_image' => true,
+                'image' => [
+                    'mime' => $mime,
+                    'base64' => $imageBase64,
+                ],
+            ];
+        }
+
+        // ===============================
+        // 2️⃣ Load last 5 chat history (memory)
+        // ===============================
+        $history = ChatHistory::where('conversation_id', $conversation->id)
+            ->latest()
+            ->get()
+            ->reverse();
+
+        $input = [];
+
+        foreach ($history as $item) {
+            $input[] = [
+                'role' => 'user',
+                'content' => [
+                    ['type' => 'text', 'text' => $item->prompt],
+                ],
+            ];
+
+            $input[] = [
+                'role' => 'assistant',
+                'content' => [
+                    ['type' => 'text', 'text' => strip_tags($item->response)],
+                ],
+            ];
+        }
+
+        // ===============================
+        // 3️⃣ Current user message
+        // ===============================
+        $userMessage = [
+            'role' => 'user',
+            'content' => [
+                [
+                    'type' => 'text',
+                    'text' =>
+                        $prompt .
+                        "\n\nRules:\n" .
+                        "- Respond in Bangla\n" .
+                        "- Return ONLY valid HTML body content\n" .
+                        "- No <html>, <head>, <body>, no markdown",
+                ],
+            ],
+        ];
+
+        if ($imageBase64) {
+            $userMessage['content'][] = [
+                'type' => 'image_url',
+                'image_url' => [
+                    'url' => $imageBase64,
+                ],
+            ];
+        }
+
+        $input[] = $userMessage;
+
+        // ===============================
+        // 4️⃣ OpenAI Responses API call
+        // ===============================
+        $response = Http::withHeaders([
+            'Authorization' => 'Bearer ' . env('OPENAI_API_KEY'),
+            'Content-Type'  => 'application/json',
         ])->post('https://api.openai.com/v1/chat/completions', [
             'model' => 'gpt-4o-mini',
-            'messages' => $messages,
-            'max_tokens' => 3000,
+            'messages' => $input,
         ]);
 
-        $content = (bool)$chatResponse->json()['choices'][0]['message']['content'];
-        $bodyHtml = $content ? '' : 'No response.';
-        if ($content) {
-            $responseHtml = $chatResponse->json()['choices'][0]['message']['content'] ?? '';
+        if (!$response->successful()) {
+            Log::error('OpenAI Error', $response->json());
 
-            // DOMDocument ইনিশিয়ালাইজ
-            $doc = new \DOMDocument();
-
-            // Suppress warnings (যেহেতু ChatGPT HTML প্রপারলি formatted নাও হতে পারে)
-            libxml_use_internal_errors(true);
-            $doc->loadHTML($responseHtml, LIBXML_HTML_NOIMPLIED | LIBXML_HTML_NODEFDTD);
-            libxml_clear_errors();
-
-            // <body> ট্যাগ বের করা
-            $body = $doc->getElementsByTagName('body')->item(0);
-
-            $bodyHtml = $body ? $doc->saveHTML($body) : $responseHtml;
-
-            // ✅ এখন $bodyHtml শুধুই <body> content
+            return response()->json([
+                'status' => false,
+                'message' => 'AI response failed',
+            ], 500);
         }
 
+        Log::info('OpenAI Response', $response->json());
 
-        // 💾 Save response
+        // ===============================
+        // 5️⃣ Extract HTML body safely
+        // ===============================
+        $rawHtml = data_get(
+            $response->json(),
+            'choices.0.message.content',
+            'No response'
+        );
+
+        $doc = new \DOMDocument();
+        libxml_use_internal_errors(true);
+        $doc->loadHTML($rawHtml, LIBXML_HTML_NOIMPLIED | LIBXML_HTML_NODEFDTD);
+        libxml_clear_errors();
+
+        $body = $doc->getElementsByTagName('body')->item(0);
+        $html = $body ? $doc->saveHTML($body) : $rawHtml;
+
+        // ===============================
+        // 6️⃣ Save chat history
+        // ===============================
         ChatHistory::create([
+            'conversation_id' => $conversation->id,
             'user_id' => $userId,
             'prompt' => $prompt,
-//            'response' => $content,
-            'response' => $content ? $bodyHtml : 'No response.',
+            'response' => $html,
+            'image_base64' => $imageBase64,
             'source' => 'chatgpt',
+            'meta' => $meta,
         ]);
 
-        // 🚀 Return response
+        // ===============================
+        // 7️⃣ Return API response
+        // ===============================
         return response()->json([
             'status' => true,
+            'conversation_id' => $conversation->id,
             'source' => 'chatgpt',
-            'match_score' => round($bestScore, 2),
-//            'data' => $content,
-            'data' => $bodyHtml,
+            'data' => $html,
         ]);
+    }
+    protected function extractBodyHtml(string $html): string
+    {
+        $doc = new \DOMDocument();
+        libxml_use_internal_errors(true);
+        $doc->loadHTML($html, LIBXML_HTML_NOIMPLIED | LIBXML_HTML_NODEFDTD);
+        libxml_clear_errors();
+
+        $body = $doc->getElementsByTagName('body')->item(0);
+        return $body ? $doc->saveHTML($body) : $html;
     }
 }

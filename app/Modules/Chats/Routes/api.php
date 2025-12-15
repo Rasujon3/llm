@@ -6,7 +6,8 @@ use Illuminate\Support\Facades\Route;
 //Route::prefix('v1/chats')->middleware('auth:sanctum')->group(function () {
 Route::prefix('v1/chats')->group(function () {
 
-    Route::get('/chat-histories/{user_id}', [ChatController::class, 'index']);
+    Route::get('/conversations', [ChatController::class, 'conversations']);
+    Route::get('/chat-histories', [ChatController::class, 'index']);
     Route::post('/chat', [ChatController::class, 'handleChat']);
 
 //    Route::get('/list', [ChatController::class, 'index'])->name('chats.list'); // List data
