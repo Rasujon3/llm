@@ -4,7 +4,7 @@ use App\Http\Controllers\Auth\LoginController;
 use App\Http\Controllers\Auth\RegisterController;
 use App\Http\Controllers\Auth\ForgotPasswordController;
 
-Route::prefix('/v1')->middleware('api')->group(function () {
+//Route::prefix('/v1')->middleware('api')->group(function () {
     Route::post('/user-signin', [LoginController::class, 'login']);
     Route::post('/verify-otp', [LoginController::class, 'verifyOtp']);
     Route::middleware('auth:sanctum')->group(function () {
@@ -27,7 +27,7 @@ Route::prefix('/v1')->middleware('api')->group(function () {
     Route::post('/auth/verify-otp', [ForgotPasswordController::class, 'verifyOtp']);
     Route::post('/auth/reset-password', [ForgotPasswordController::class, 'resetPassword']);
 
-});
+//});
 
 Route::get('/migrate', function(){
     Artisan::call('migrate', [

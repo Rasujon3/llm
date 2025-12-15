@@ -73,7 +73,7 @@ class ChatController extends AppBaseController
             $histories = ChatHistory::where('user_id', $request->user_id)
                 ->where('conversation_id', $request->conversation_id)
                 ->orderBy('created_at', 'asc')
-                ->get(['id', 'prompt', 'response', 'source', 'created_at']);
+                ->get();
 
             if ($histories->isEmpty()) {
                 return response()->json([
