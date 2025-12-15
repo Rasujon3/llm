@@ -86,24 +86,11 @@ class User extends Authenticatable
     public static function rules($request = null)
     {
         $rules = [
-            'full_name' => 'required|string|max:255',
+            'name' => 'required|string|max:255',
             'email' => 'required|email|max:255|unique:users,email',
             'phone' => 'required|string|max:20|unique:users,phone',
-            'user_type_id' => 'required|in:2,3',
-            'role' => 'required|string|in:user,owner',
-            'ip_address' => 'nullable|ip',
-            'lat' => 'nullable|numeric',
-            'long' => 'nullable|numeric',
-            'day' => 'nullable|string|max:2',
-            'month' => 'nullable|string',
-            'year' => 'nullable|string|max:4',
-            'fbase' => 'nullable|string|max:255',
-            'refer_code' => 'nullable|string|max:50|exists:users,my_refer_code',
-            'my_refer_code' => 'nullable|string|max:50',
-            'email_verified_at' => 'nullable|date',
             'password' => 'required|string|min:6',
             'confirm_password' => 'required|string|min:6|same:password',
-            'image' => 'nullable|image|mimes:jpeg,png,jpg,gif,webp|max:5120',
         ];
 
         // If request is passed, check for owner-specific rules

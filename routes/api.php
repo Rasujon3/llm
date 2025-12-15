@@ -5,15 +5,15 @@ use App\Http\Controllers\Auth\RegisterController;
 use App\Http\Controllers\Auth\ForgotPasswordController;
 
 Route::prefix('/v1')->middleware('api')->group(function () {
-    Route::post('/login', [LoginController::class, 'login']);
+    Route::post('/user-signin', [LoginController::class, 'login']);
     Route::post('/verify-otp', [LoginController::class, 'verifyOtp']);
     Route::middleware('auth:sanctum')->group(function () {
     Route::get('/user', function (Request $request) {
         return $request->user();
     });
 });
-    Route::post('/logout', [LoginController::class, 'logout'])->name('user.logout');
-    Route::post('/register', [RegisterController::class, 'register']);
+    Route::post('/user-signout', [LoginController::class, 'logout'])->name('user.logout');
+    Route::post('/user-signup', [RegisterController::class, 'register']);
     Route::get('/user-info', [RegisterController::class, 'userInfo'])->name('user.info')->middleware(['auth:sanctum', 'roles:user,owner,receptionist']);
     Route::post('/user-profile-update', [RegisterController::class, 'userProfileUpdate'])->name('user.profile.update')->middleware(['auth:sanctum', 'roles:user,owner,receptionist']);
     Route::post('/change-password', [RegisterController::class, 'changePassword'])->name('user.change-password')->middleware(['auth:sanctum', 'roles:user,owner,receptionist']);
